@@ -1,18 +1,25 @@
 import socket
+import struct
 
 port = 5300
 ip = "127.0.0.1"
-SIZE = 1024
+chunk_size = 1024
 
 if __name__ == '__main__':
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    server_socket.bind((ip, port))
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as socket:
+        socket.bind((ip, port))
 
-    file = open('received.jpg', 'wb')
-    message, address = server_socket.recvfrom(SIZE)
-    while message:
-        file.write(message)
-        message, address = server_socket.recvfrom(SIZE)
+        # Receive the number of chunks (messages) to receive later
+        chunks_count_bytes, address = socket.recvfrom(4)  # sizeof int = 4
+        chunks_count = struct.unpack("i", chunks_count_bytes)[0]  # byte array -> int
 
-    file.close()
-    server_socket.close()
+        file_bytes = b""
+
+        # Receive image by chunks
+        for _ in range(chunks_count):
+            message, _ = socket.recvfrom(chunk_size)
+            file_bytes += message
+
+    # Write all bytes to a file
+    with open('received.jpg', 'wb') as file:
+        file.write(file_bytes)
