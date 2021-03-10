@@ -1,6 +1,7 @@
 import socket
 import struct
 import zlib
+import hashlib
 from math import ceil
 
 port = 5300
@@ -21,6 +22,9 @@ if __name__ == '__main__':
         client_socket.settimeout(2)
         # Send the chunk size as a byte array
         client_socket.sendto(struct.pack("i", chunks_count), (ip, port))
+
+        file_md5_key = hashlib.md5(file_bytes)
+        client_socket.sendto(file_md5_key.digest(), (ip, port))
 
         # Send bytes by chunks
         for i in range(chunks_count):

@@ -16,6 +16,7 @@ if __name__ == '__main__':
         chunks_count = struct.unpack("i", chunks_count_bytes)[0]  # byte array -> int
 
         file_bytes = b""
+        file_md5_key, _ = socket.recvfrom(16)
         chunk_md5_key = hashlib.md5()
 
         # Receive image by chunks
@@ -33,8 +34,7 @@ if __name__ == '__main__':
                     chunk_md5_key.update(data)
                     break
 
-        file_md5_key = hashlib.md5(file_bytes)
-        if file_md5_key.digest() == chunk_md5_key.digest():
+        if file_md5_key == chunk_md5_key.digest():
             print("File received successfully.")
         else:
             print("Error: files do not match.")
@@ -42,4 +42,3 @@ if __name__ == '__main__':
     # Write all bytes to a file
     with open('received.jpg', 'wb') as file:
         file.write(file_bytes)
-
