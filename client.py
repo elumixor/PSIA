@@ -1,13 +1,16 @@
-import socket
-import struct
-import zlib
 import hashlib
+import struct
 from math import ceil
+
+from sender import Sender
 
 port = 5300
 ip = "127.0.0.1"
 chunk_size = 1020
-input_file = "original.jpg"
+input_file = "data/original.jpg"
+max_packet_attempts = 10
+max_attempts = 10
+timeout = 1
 
 if __name__ == '__main__':
     # Read the whole file as bytes
@@ -18,23 +21,27 @@ if __name__ == '__main__':
     # so that they know how many messages to receive
     chunks_count = ceil(len(file_bytes) / chunk_size)
 
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0) as client_socket:
-        client_socket.settimeout(2)
-        # Send the chunk size as a byte array
-        client_socket.sendto(struct.pack("i", chunks_count), (ip, port))
+    with Sender(ip, port, max_packet_attempts, timeout, verbose=True) as sender:
+        for attempt in range(max_attempts):
+            try:
+                # Send the chunk size as a byte array
+                sender.send(struct.pack("i", chunks_count))
 
-        file_md5_key = hashlib.md5(file_bytes)
-        client_socket.sendto(file_md5_key.digest(), (ip, port))
+                # Send the MD5 of the whole data
+                file_md5_key = hashlib.md5(file_bytes)
+                sender.send(file_md5_key.digest())
 
-        # Send bytes by chunks
-        for i in range(chunks_count):
-            chunk = file_bytes[i * chunk_size: (i + 1) * chunk_size]
-            chunk_crc32 = zlib.crc32(chunk)  # unsigned int
-            message = chunk + struct.pack("I", chunk_crc32)
-            while True:
-                client_socket.sendto(message, (ip, port))
+                # Send bytes by chunks
+                for i in range(chunks_count):
+                    chunk = file_bytes[i * chunk_size: (i + 1) * chunk_size]
+                    sender.send(chunk)
 
-                # receiving confirmation
-                confirmation, _ = client_socket.recvfrom(1)
-                if confirmation == struct.pack("?", True):
+                # Receive the confirmation for the whole file
+                if sender.send_succeeded:
+                    print("Send ok")
                     break
+
+            except RuntimeError as e:
+                print(e)
+
+            print(f"Attempt {attempt} failed")
