@@ -5,7 +5,7 @@ from receiver import Receiver
 
 port = 5300
 ip = "127.0.0.1"
-packet_size = 1024
+packet_size = 1020
 max_receive_attempts = 10
 max_attempts = 10
 file_name = "data/received.jpg"
@@ -34,6 +34,7 @@ if __name__ == '__main__':
                     break
 
                 print("MD5 do not match")
+                receiver.send_fail()
 
             except RuntimeError as e:
                 print(e)
