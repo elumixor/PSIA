@@ -1,5 +1,7 @@
 import hashlib
 import struct
+import os
+import random
 from math import ceil
 
 from sender import Sender
@@ -7,7 +9,7 @@ from sender import Sender
 port = 5300
 ip = "127.0.0.1"
 chunk_size = 1020
-file_name = "data/original.jpg"
+file_name = "original.jpg"
 max_packet_attempts = 10
 max_attempts = 10
 timeout = 1
@@ -22,26 +24,28 @@ if __name__ == '__main__':
     chunks_count = ceil(len(file_bytes) / chunk_size)
 
     with Sender(ip, port, max_packet_attempts, timeout, verbose=True) as sender:
-        for attempt in range(max_attempts):
+        while True:
             try:
-                # Send the chunk size as a byte array
-                sender.send(struct.pack("i", chunks_count))
-
-                # Send the MD5 of the whole data
+                # sends md5_key and the number of chunks together
                 file_md5_key = hashlib.md5(file_bytes)
-                sender.send(file_md5_key.digest())
-
-                # Send bytes by chunks
-                for i in range(chunks_count):
-                    chunk = file_bytes[i * chunk_size: (i + 1) * chunk_size]
-                    sender.send(chunk)
-
-                # Receive the confirmation for the whole file
-                if sender.send_succeeded:
-                    print("Send ok")
-                    break
-
+                chunks_count_bytes = struct.pack("i", chunks_count)
+                sender.send(file_md5_key.digest() + chunks_count_bytes)
+                break
             except RuntimeError as e:
                 print(e)
 
-            print(f"Attempt {attempt} failed")
+        for i in range(chunks_count):
+            while True:
+                chunk = file_bytes[i * chunk_size: (i + 1) * chunk_size]
+                try:
+                    sender.send(chunk)
+                    break
+
+                except RuntimeError as e:
+                    print(e)
+
+        if sender.send_succeeded:
+            print("Send OK")
+        else:
+            print("Unexpected error. Repeat broadcast")
+

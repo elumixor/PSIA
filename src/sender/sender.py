@@ -1,10 +1,13 @@
 import socket
 import struct
 import zlib
+import random
+
+DROP_RATE = 10
+ERROR_RATE = 10
 
 
 class Sender:
-
     def __init__(self, ip, port, max_attempts, timeout, verbose=False):
         self.ip = ip
         self.port = port
@@ -28,7 +31,7 @@ class Sender:
         """
         try:
             response, _ = self.socket.recvfrom(1)
-            ok = struct.unpack("?", response)
+            ok, = struct.unpack("?", response)
 
             if self.verbose and not ok:
                 print("Confirmation: error")
@@ -51,11 +54,24 @@ class Sender:
         :raises RuntimeError: in case of timeout, or after the maximum of allowed failures elapsed
         :param data: Byte data to be sent
         """
+
         crc32 = zlib.crc32(data)
         packet = data + struct.pack("I", crc32)
 
         for attempt in range(1, self.max_attempts + 1):
-            self.socket.sendto(packet, (self.ip, self.port))
+            message = packet
+
+            # simulates data corruption
+            if random.random() < (ERROR_RATE / 100):
+                print("Simulating packet corruption")
+                message = bytearray(message)
+                message[1] = 1
+
+            # simulates packet loss
+            if random.random() > (DROP_RATE / 100):
+                self.socket.sendto(message, (self.ip, self.port))
+            else:
+                print("Simulating packet loss")
 
             if self.send_succeeded:
                 return
