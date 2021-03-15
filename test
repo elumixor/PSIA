@@ -1,0 +1,7 @@
+#!/bin/bash
+
+echo "Starting receiver"
+./receiver &
+
+echo "Starting sender"
+./sender
