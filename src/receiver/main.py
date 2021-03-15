@@ -8,6 +8,7 @@ ip = "127.0.0.1"
 packet_size = 1024
 max_receive_attempts = 10
 max_attempts = 10
+file_name = "data/received.jpg"
 
 if __name__ == '__main__':
     with Receiver(ip, port, max_receive_attempts, verbose=True) as receiver:
@@ -40,5 +41,5 @@ if __name__ == '__main__':
             print(f"Attempt {attempt} failed")
 
     # Write all bytes to a file
-    with open('data/received.jpg', 'wb') as file:
+    with open(file_name, "wb") as file:
         file.write(file_bytes)

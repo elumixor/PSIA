@@ -7,14 +7,14 @@ from sender import Sender
 port = 5300
 ip = "127.0.0.1"
 chunk_size = 1020
-input_file = "data/original.jpg"
+file_name = "data/original.jpg"
 max_packet_attempts = 10
 max_attempts = 10
 timeout = 1
 
 if __name__ == '__main__':
     # Read the whole file as bytes
-    with open(input_file, "rb") as file:
+    with open(file_name, "rb") as file:
         file_bytes = file.read(-1)
 
     # We must send the number of chunks to the server,
