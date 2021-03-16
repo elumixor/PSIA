@@ -1,14 +1,12 @@
 import hashlib
 import struct
-import os
-import random
 from math import ceil
 
 from sender import Sender
 
 port = 5300
 ip = "127.0.0.1"
-chunk_size = 1020
+chunk_size = 1016
 file_name = "original.jpg"
 max_packet_attempts = 10
 max_attempts = 10
@@ -29,7 +27,7 @@ if __name__ == '__main__':
                 # sends md5_key and the number of chunks together
                 file_md5_key = hashlib.md5(file_bytes)
                 chunks_count_bytes = struct.pack("i", chunks_count)
-                sender.send(file_md5_key.digest() + chunks_count_bytes)
+                sender.send(file_md5_key.digest() + chunks_count_bytes, 0)
                 break
             except RuntimeError as e:
                 print(e)
@@ -38,7 +36,7 @@ if __name__ == '__main__':
             while True:
                 chunk = file_bytes[i * chunk_size: (i + 1) * chunk_size]
                 try:
-                    sender.send(chunk)
+                    sender.send(chunk, i)
                     break
 
                 except RuntimeError as e:

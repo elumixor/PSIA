@@ -21,6 +21,7 @@ if __name__ == '__main__':
                 file_md5_key = file_md5_and_chunks_count_bytes[:16]
                 chunks_count_bytes = file_md5_and_chunks_count_bytes[16:]
                 chunks_count, = struct.unpack("i", chunks_count_bytes)
+                receiver.last_packet_number = -1
                 break
             except RuntimeError as e:
                 print(e)
@@ -36,7 +37,7 @@ if __name__ == '__main__':
 
         if file_md5_key == hashlib.md5(file_bytes).digest():
             print("File received successfully.")
-            receiver.send_ok()
+            receiver.send_ok(struct.pack("i", 9999))
         else:
             print("MD5 do not match")
 

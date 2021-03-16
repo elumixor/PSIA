@@ -24,17 +24,24 @@ class Sender:
     def __exit__(self, *args):
         self.socket.__exit__()
 
-    @property
-    def send_succeeded(self):
+    # @property
+    def send_succeeded(self, packet_num_bytes):
         """
         Asks for the confirmation from the server if the packet was successfully received
         """
         try:
-            response, _ = self.socket.recvfrom(1)
-            ok, = struct.unpack("?", response)
+            response, _ = self.socket.recvfrom(5)
+            ok, = struct.unpack("?", response[:1])
+            rec_packet_number = response[1:]
 
             if self.verbose and not ok:
                 print("Confirmation: error")
+
+            if rec_packet_number == struct.pack("i", 9999):
+                return True
+
+            if rec_packet_number != packet_num_bytes:
+                return False
 
             return ok
         except socket.timeout:
@@ -46,7 +53,7 @@ class Sender:
 
             return False
 
-    def send(self, data: bytes):
+    def send(self, data: bytes, packet_number: int):
         """
         Sends a packet with a 4 bytes of crc32 added in the end.
         Awaits for confirmation from the receiver.
@@ -54,9 +61,9 @@ class Sender:
         :raises RuntimeError: in case of timeout, or after the maximum of allowed failures elapsed
         :param data: Byte data to be sent
         """
-
         crc32 = zlib.crc32(data)
-        packet = data + struct.pack("I", crc32)
+        packet_num_bytes = struct.pack("i", packet_number)
+        packet = data + struct.pack("I", crc32) + packet_num_bytes
 
         for attempt in range(1, self.max_attempts + 1):
             message = packet
@@ -73,7 +80,7 @@ class Sender:
             else:
                 print("Simulating packet loss")
 
-            if self.send_succeeded:
+            if self.send_succeeded(packet_num_bytes):
                 return
 
         raise RuntimeError(f"Failed after {self.max_attempts} attempts")
