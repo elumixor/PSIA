@@ -27,11 +27,14 @@ if __name__ == '__main__':
                 print(e)
 
         file_bytes = b""
-        for i in range(chunks_count):
+        i = 0
+        while i < chunks_count:
             try:
                 # Receive image by chunks
                 data = receiver.receive(packet_size)
-                file_bytes += data
+                if data:
+                    file_bytes += data
+                    i += 1
             except RuntimeError as e:
                 print(e)
 

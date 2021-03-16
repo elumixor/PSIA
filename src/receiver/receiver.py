@@ -1,6 +1,9 @@
 import socket
 import struct
 import zlib
+import random
+
+DROP_RATE = 10
 
 
 class Receiver:
@@ -40,6 +43,10 @@ class Receiver:
                     self.last_packet_number = packet_number
                     self.send_ok(packet_number_bytes)
                     return data_bytes
+                # case when the acknowledgement packet is lost
+                elif packet_number == self.last_packet_number:
+                    self.send_ok(packet_number_bytes)
+                    return
 
                 if self.verbose:
                     print(f"Attempt {attempt}: Crc32 keys do not match. Requesting resend.")
@@ -52,7 +59,11 @@ class Receiver:
         raise RuntimeError(f"Failed after {self.max_attempts} attempts")
 
     def send_ok(self, packet_number: bytes):
-        self.socket.sendto(struct.pack("?", True) + packet_number, self.address)
+        # simulates acknowledgement loss
+        if random.random() > (DROP_RATE / 100):
+            self.socket.sendto(struct.pack("?", True) + packet_number, self.address)
 
     def send_error(self, packet_number: bytes):
-        self.socket.sendto(struct.pack("?", False) + packet_number, self.address)
+        # simulates acknowledgement loss
+        if random.random() > (DROP_RATE / 100):
+            self.socket.sendto(struct.pack("?", False) + packet_number, self.address)
