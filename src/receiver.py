@@ -8,10 +8,8 @@ if __name__ == '__main__':
     # Read configuration
     config = read_yaml("../config.yaml")
 
-    sender, receiver = config["sender"], config["receiver"]
-
-    my_ip, my_port = receiver["ip"], receiver["port"]
-    remote_ip, remote_port = sender["ip"], sender["port"]
+    my_ip, my_port = config["receiver_ip"], config["port"]["data"]["target"]
+    remote_ip, remote_port = config["sender_ip"], config["port"]["acknowledgement"]["source"]
 
     file_name = config["file_name"]["receiver"]
     chunk_size = config["chunk_size"]

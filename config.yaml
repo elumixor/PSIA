@@ -1,14 +1,18 @@
-sender:
-  ip: "127.0.0.1"
-  port: 5100
+sender_ip: "127.0.0.1"
+receiver_ip: "127.0.0.1"
 
-receiver:
-  ip: "127.0.0.1"
-  port: 5300
+port:
+  data:
+    source: 5300
+    target: 5301
+
+  acknowledgement:
+    source: 5100
+    target: 5101
 
 chunk_size: 1024
 attempts: 10
-timeout: 0.1
+timeout: 1
 total_attempts: 10
 file_name:
   sender: "../data/original.jpg"

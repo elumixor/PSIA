@@ -10,10 +10,8 @@ if __name__ == '__main__':
     # Read configuration
     config = read_yaml("../config.yaml")
 
-    sender, receiver = config["sender"], config["receiver"]
-
-    my_ip, my_port = sender["ip"], sender["port"]
-    remote_ip, remote_port = receiver["ip"], receiver["port"]
+    my_ip, my_port = config["sender_ip"], config["port"]["acknowledgement"]["target"]
+    remote_ip, remote_port = config["receiver_ip"], config["port"]["data"]["source"]
 
     file_name = config["file_name"]["sender"]
     chunk_size = config["chunk_size"]
@@ -32,7 +30,6 @@ if __name__ == '__main__':
 
     with Connection(my_ip, my_port, remote_ip, remote_port, timeout, attempts) as connection:
         # Try several times
-        succeeded = False
         for _ in range(total_attempts):
             try:
                 # Send the chunk size as a byte array
@@ -50,13 +47,11 @@ if __name__ == '__main__':
                 # Receive the confirmation for the whole file
                 if connection.receive(1, crc=False):
                     print("Send ok")
-                    succeeded = True
-                    break
+                    exit(0)
 
             except RuntimeError as e:
                 print(e)
 
             print("Attempt failed", file=sys.stderr)
 
-        if not succeeded:
-            print(f"Did not succeed after {total_attempts} attempts", file=sys.stderr)
+        print(f"Did not succeed after {total_attempts} attempts", file=sys.stderr)
