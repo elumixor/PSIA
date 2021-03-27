@@ -1,0 +1,15 @@
+sender:
+  ip: "127.0.0.1"
+  port: 5100
+
+receiver:
+  ip: "127.0.0.1"
+  port: 5300
+
+chunk_size: 1024
+attempts: 10
+timeout: 0.1
+total_attempts: 10
+file_name:
+  sender: "../data/original.jpg"
+  receiver: "../data/received.jpg"
