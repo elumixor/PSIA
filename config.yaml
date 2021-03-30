@@ -10,10 +10,7 @@ port:
     source: 5100
     target: 5101
 
-chunk_size: 1024
-attempts: 10
 timeout: 1
-total_attempts: 10
 file_name:
   sender: "../data/original.jpg"
   receiver: "../data/received.jpg"

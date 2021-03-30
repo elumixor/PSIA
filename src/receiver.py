@@ -1,9 +1,10 @@
 import hashlib
 import struct
 import sys
+import time
 
 from connection import Connection
-from utils import read_yaml
+from utils import read_yaml, log
 
 if __name__ == '__main__':
     # Read configuration
@@ -13,47 +14,77 @@ if __name__ == '__main__':
     remote_ip, remote_port = config["sender_ip"], config["port"]["acknowledgement"]["source"]
 
     file_name = config["file_name"]["receiver"]
-    chunk_size = config["chunk_size"]
     timeout = config["timeout"]
-    attempts = config["attempts"]
 
-    total_attempts = config["total_attempts"]
+    with Connection(my_ip, my_port, remote_ip, remote_port, timeout) as connection:
+        file_bytes = None
+        md5 = None
+        chunks_count = None
+        chunk_index = None
+        should_close = False
 
-    with Connection(my_ip, my_port, remote_ip, remote_port, timeout, attempts) as connection:
-        for attempt in range(total_attempts):
-            try:
-                # Receive the number of packets to receive
-                chunks_count_bytes = connection.receive(4, timeout=False)
-                chunks_count, = struct.unpack("i", chunks_count_bytes)
 
-                # Receive the hash for the whole file
-                file_md5_key = connection.receive(16)
+        def on_header(header: bytes):
+            global file_bytes, chunks_count, md5, chunk_index
 
-                file_bytes = b""
+            chunks_count, md5 = header[:4], header[4:]
+            chunks_count, = struct.unpack("i", chunks_count)
 
-                # Receive image by chunks
-                for i in range(chunks_count):
-                    data = connection.receive(chunk_size)
-                    file_bytes += data
-                    print(f"{i + 1}/{chunks_count} ok")
+            log(f"Header received. Chunks count: {chunks_count}")
 
-                if file_md5_key == hashlib.md5(file_bytes).digest():
-                    print("File received successfully.")
-                    connection.send_ok()
-                    break
+            chunk_index = 0
+            file_bytes = b""
 
-                print("MD5 do not match", file=sys.stderr)
+            connection.status = b"header received"
 
-                # In case the packet gets lost we send the reset signal
-                # and wait for confirmation that the sender received it
-                connection.send_packet(b"reset")
-                connection.send_error()
 
-            except RuntimeError as e:
-                print(e)
+        def on_packet(packet: bytes):
+            global should_close, chunk_index, file_bytes
 
-            print(f"Attempt {attempt} failed", file=sys.stderr)
+            index, packet = packet[:4], packet[4:]
+            index, = struct.unpack("i", index)
 
-    # Write all bytes to a file
-    with open(file_name, "wb") as file:
-        file.write(file_bytes)
+            if index != chunk_index:
+                return
+
+            file_bytes += packet
+
+            log(f"Received chunk {chunk_index}")
+
+            if chunk_index == chunks_count - 1:
+                # Basically, MD5 check is redundant, as we've guaranteed
+                # the correct order of the individual packets and their
+                # integrity
+                if md5 == hashlib.md5(file_bytes).digest():
+                    connection.status = b"md5 ok"
+
+                    with open(file_name, "wb") as file:
+                        file.write(file_bytes)
+
+                    log.success("Receive successful")
+                    should_close = True
+                else:
+                    connection.status = b"md5 error"
+                    log.error("MD5 error", file=sys.stderr)
+            else:
+                connection.status = b"received " + struct.pack("i", chunk_index)
+                chunk_index += 1
+
+
+        def on_reset(_):
+            global file_bytes, md5
+            file_bytes = b""
+            connection.status = b"receive ready"
+
+
+        connection.add_handler(b"header", on_header)
+        connection.add_handler(b"packet", on_packet)
+        connection.add_handler(b"reset", on_reset)
+
+        connection.status = b"receive ready"
+
+        while not should_close:
+            time.sleep(0.1)
+
+        # Give sender some time to get to know the current "OK" status
+        time.sleep(2)

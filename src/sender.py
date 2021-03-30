@@ -1,10 +1,10 @@
 import hashlib
 import struct
-import sys
+import time
 from math import ceil
 
-from connection import Connection
-from utils import read_yaml
+from connection import Connection, MAX_DATA_SIZE
+from utils import read_yaml, log
 
 if __name__ == '__main__':
     # Read configuration
@@ -14,11 +14,8 @@ if __name__ == '__main__':
     remote_ip, remote_port = config["receiver_ip"], config["port"]["data"]["source"]
 
     file_name = config["file_name"]["sender"]
-    chunk_size = config["chunk_size"]
+    chunk_size = MAX_DATA_SIZE - 4
     timeout = config["timeout"]
-    attempts = config["attempts"]
-
-    total_attempts = config["total_attempts"]
 
     # Read the whole file as bytes
     with open(file_name, "rb") as file:
@@ -27,32 +24,47 @@ if __name__ == '__main__':
     # We must send the number of chunks to the server,
     # so that they know how many messages to receive
     chunks_count = ceil(len(file_bytes) / chunk_size)
+    md5 = hashlib.md5(file_bytes).digest()
 
-    with Connection(my_ip, my_port, remote_ip, remote_port, timeout, attempts) as connection:
-        # Try several times
-        for _ in range(total_attempts):
-            try:
-                # Send the chunk size as a byte array
-                connection.send_packet(struct.pack("i", chunks_count))
+    with Connection(my_ip, my_port, remote_ip, remote_port, timeout) as connection:
+        while True:
+            log("Starting send")
 
-                # Send the MD5 of the whole data
-                file_md5_key = hashlib.md5(file_bytes)
-                connection.send_packet(file_md5_key.digest())
+            # await that the connection is ok
+            while not connection.remote_status == b"receive ready":
+                time.sleep(0.1)
 
-                # Send bytes by chunks
-                for i in range(chunks_count):
-                    chunk = file_bytes[i * chunk_size: (i + 1) * chunk_size]
-                    connection.send_packet(chunk)
-                    print(f"{i + 1}/{chunks_count} ok")
+            log("Receiver ready")
+            connection.status = b"begin send"
 
-                # Receive the confirmation for the whole file
-                if connection.receive(1, crc=False):
-                    print("Send ok")
+            # send header
+            log("Sending header")
+            while not connection.remote_status == b"header received":
+                connection.send_message(b"header", struct.pack("i", chunks_count) + md5)
+
+            # send data by chunks
+            for chunk_index in range(chunks_count):
+                log(f"Sending chunk {chunk_index + 1}/{chunks_count}")
+
+                status = connection.remote_status
+                while status != b"received " + struct.pack("i", chunk_index) and \
+                        status != b"md5 ok" and status != b"md5 error":
+                    connection.status = b"packet " + struct.pack("i", chunk_index)
+                    chunk = struct.pack("i", chunk_index) + file_bytes[chunk_index * chunk_size: (chunk_index + 1) * chunk_size]
+                    connection.send_message(b"packet", chunk)
+                    status = connection.remote_status
+
+            # check md5
+            log("Checking MD5")
+            while True:
+                if status == b"md5 ok":
+                    log.success("Send successful")
                     exit(0)
 
-            except RuntimeError as e:
-                print(e)
+                if status == b"md5 error":
+                    log.error("MD5 mismatch")
+                    break
 
-            print("Attempt failed", file=sys.stderr)
-
-        print(f"Did not succeed after {total_attempts} attempts", file=sys.stderr)
+            # Reset the receiver
+            while not connection.remote_status == b"header received":
+                connection.send_message(b"reset", b"")

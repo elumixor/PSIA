@@ -1,21 +1,69 @@
 import socket
 import struct
-import sys
+import time
 import zlib
+from threading import Thread
+from typing import Callable
+
+from utils import log
+
+HEADER_SIZE = 20
+MAX_PACKET_SIZE = 1024
+CRC_SIZE = 4
+MAX_DATA_SIZE = MAX_PACKET_SIZE - HEADER_SIZE - CRC_SIZE
+
+
+class Listener:
+    def __init__(self, receive_socket: socket.socket, request_handler: Callable[[bytes], None]):
+        self.should_exit = False
+
+        def listener():
+            while not self.should_exit:
+                try:
+                    data, _ = receive_socket.recvfrom(MAX_PACKET_SIZE)
+                    request_handler(data)
+                except socket.timeout:
+                    ...
+
+        self.thread = Thread(target=listener)
+        self.thread.start()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        if not self.thread.is_alive():
+            return
+
+        self.should_exit = True
+        self.thread.join()
+
+    def close(self):
+        self.__exit__()
+
+    def wait(self):
+        self.thread.join()
 
 
 class Connection:
-    def __init__(self, my_ip: str, my_port: int, remote_ip: str, remote_port: int, timeout=0.2, attempts=1):
+    def __init__(self, my_ip: str, my_port: int, remote_ip: str, remote_port: int, timeout: int):
         self.my_ip = my_ip
         self.my_port = my_port
         self.remote_ip = remote_ip
         self.remote_port = remote_port
 
         self.timeout = timeout
-        self.attempts = attempts
 
         self.send_socket: socket.socket
         self.receive_socket: socket.socket
+
+        self.listener: Listener
+
+        self.handler = None
+        self._remote_status = None
+        self.status = None
+
+        self._handlers = dict()
 
     def __enter__(self):
         self.send_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0).__enter__()
@@ -23,81 +71,79 @@ class Connection:
 
         self.receive_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0).__enter__()
         self.receive_socket.bind((self.my_ip, self.my_port))
-        self.receive_socket.settimeout(self.timeout)
+        self.receive_socket.settimeout(0.1)  # set a small timeout on the receive socket
+
+        # Create a request listener in a separate thread
+        # pass a callback for request handling
+        self.listener = Listener(self.receive_socket, self.handle_request).__enter__()
 
         return self
 
     def __exit__(self, *args):
         self.send_socket.__exit__()
-        self.receive_socket.__exit__()
+        self.listener.__exit__()
 
-    def send_packet(self, data: bytes):
-        # Add crc32 to the data
-        crc32 = zlib.crc32(data)
-        packet = data + struct.pack("I", crc32)
+    def handle_request(self, data: bytes):
+        # print(data)
+        # print(data)
+        data, crc = data[:-4], data[-4:]
+        crc, = struct.unpack("I", crc)
 
-        # Try `self.attempts` times
-        for _ in range(self.attempts):
-            # Send the actual packet
-            self.send_socket.sendto(packet, (self.remote_ip, self.remote_port))
+        if zlib.crc32(data) != crc:
+            log.info("crc do not match")
+            return
 
-            # Receive confirmation
-            try:
-                ok, _ = self.receive_socket.recvfrom(1)
-                ok, = struct.unpack("?", ok)
+        if data == b"get status":
+            self.send(self.status)
+            return
 
-            except socket.timeout:
-                print("error: timeout", file=sys.stderr)
-                continue
+        if self.handler == "awaiting status":
+            self._remote_status = data
+            self.handler = None
+            return
 
-            if ok:
-                return
+        header, data = data[:HEADER_SIZE], data[HEADER_SIZE:]
 
-            print("error: crc32 do not match", file=sys.stderr)
+        # remove padded null bytes
+        if b"\0" in header:
+            header = header[:header.index(b"\0")]
 
-        # If after `self.attempts` send did not succeed, raise an error
-        raise RuntimeError(f"Send did not succeed after {self.attempts} attempts")
+        if header not in self._handlers:
+            return
 
-    def receive(self, raw_bytes_count: int, timeout=True, crc=True):
-        # We receive the raw data, plus the crc32, which is 4 bytes
-        total_count = raw_bytes_count if not crc else raw_bytes_count + 4
+        assert header in self._handlers
 
-        for _ in range(self.attempts):
-            if timeout:
-                try:
-                    packet, _ = self.receive_socket.recvfrom(total_count)
-                except socket.timeout:
-                    print("error: timeout", file=sys.stderr)
-                    continue
+        # Find the handler and run it
+        self._handlers[header](data)
 
-            else:
-                # If timeout is False, try until received
-                while True:
-                    try:
-                        packet, _ = self.receive_socket.recvfrom(total_count)
-                        break
-                    except socket.timeout:
-                        ...
+    def add_handler(self, header: bytes, handler: Callable[[bytes], None]):
+        assert header not in self._handlers
 
-            if not crc:
-                return packet
+        self._handlers[header] = handler
 
-            # Once received, check the crc32
-            crc32, = struct.unpack("I", packet[-4:])
-            data_bytes = packet[:-4]
+    def send(self, data: bytes):
+        assert len(data) <= MAX_PACKET_SIZE
 
-            if crc32 == zlib.crc32(data_bytes):
-                print("ok")
-                self.send_ok()
-                return data_bytes
+        self.send_socket.sendto(data + struct.pack("I", zlib.crc32(data)), (self.remote_ip, self.remote_port))
 
-            print("error: crc32 do not match", file=sys.stderr)
-            self.send_error()
+    def send_message(self, header: bytes, data: bytes):
+        assert len(header) <= HEADER_SIZE
 
-        raise RuntimeError(f"Receive did not succeed after {self.attempts} attempts")
+        # pad header with null bytes
+        header += b"\0" * (HEADER_SIZE - len(header))
 
-    def send_ok(self):
-        self.send_socket.sendto(struct.pack("?", True), (self.remote_ip, self.remote_port))
+        self.send(header + data)
 
-    def send_error(self):
-        self.send_socket.sendto(struct.pack("?", False), (self.remote_ip, self.remote_port))
+    @property
+    def remote_status(self):
+        self.handler = "awaiting status"
+
+        self._remote_status = None
+        self.send(b"get status")
+
+        while self._remote_status is None:
+            time.sleep(0.1)
+            self.send(b"get status")
+
+        # print(self._remote_status)
+        return self._remote_status
