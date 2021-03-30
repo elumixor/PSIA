@@ -51,7 +51,6 @@ class Connection:
                 continue
 
             if ok:
-                print("ok")
                 return
 
             print("error: crc32 do not match", file=sys.stderr)

@@ -1,5 +1,6 @@
 import hashlib
 import struct
+import sys
 
 from connection import Connection
 from utils import read_yaml
@@ -34,19 +35,24 @@ if __name__ == '__main__':
                 for i in range(chunks_count):
                     data = connection.receive(chunk_size)
                     file_bytes += data
+                    print(f"{i + 1}/{chunks_count} ok")
 
                 if file_md5_key == hashlib.md5(file_bytes).digest():
                     print("File received successfully.")
                     connection.send_ok()
                     break
 
-                print("MD5 do not match")
-                connection.send_fail()
+                print("MD5 do not match", file=sys.stderr)
+
+                # In case the packet gets lost we send the reset signal
+                # and wait for confirmation that the sender received it
+                connection.send_packet(b"reset")
+                connection.send_error()
 
             except RuntimeError as e:
                 print(e)
 
-            print(f"Attempt {attempt} failed")
+            print(f"Attempt {attempt} failed", file=sys.stderr)
 
     # Write all bytes to a file
     with open(file_name, "wb") as file:

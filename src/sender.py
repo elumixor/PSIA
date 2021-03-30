@@ -43,6 +43,7 @@ if __name__ == '__main__':
                 for i in range(chunks_count):
                     chunk = file_bytes[i * chunk_size: (i + 1) * chunk_size]
                     connection.send_packet(chunk)
+                    print(f"{i + 1}/{chunks_count} ok")
 
                 # Receive the confirmation for the whole file
                 if connection.receive(1, crc=False):
