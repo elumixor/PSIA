@@ -49,7 +49,6 @@ if __name__ == "__main__":
     chunk_missing_list = []
 
     # receive data
-    received_packets = 0
     while len(chunk_index_list) != 0:
         print("still waiting for", chunk_index_list)
         window = WINDOW_SIZE if len(chunk_index_list) > WINDOW_SIZE else len(chunk_index_list)
@@ -64,19 +63,17 @@ if __name__ == "__main__":
                 if crc == struct.pack("I", zlib.crc32(data[:-4])) and expected_packet_index == chunk_index:
                     log.success("received", chunk_index)
                     chunks[chunk_index] = chunk
-                    received_packets += 1
                     chunk_index_list.remove(chunk_index)
                     if chunk_index in chunk_missing_list:
                         chunk_missing_list.remove(chunk_index)
                 elif crc == struct.pack("I", zlib.crc32(data[:-4])):
-                    log.success("expected", expected_packet_index, "got", chunk_index)
-                    if chunk_index in chunk_index_list:
+                    log.error("expected", expected_packet_index, "got", chunk_index)
+                    if chunk_index in current_window_packets:
                         chunks[chunk_index] = chunk
-                        received_packets += 1
                         chunk_index_list.remove(chunk_index)
                     chunk_missing_list.append(expected_packet_index)
-                    if chunk_index in chunk_missing_list:
-                        chunk_missing_list.remove(chunk_index)
+                    # if chunk_index in chunk_missing_list:
+                    #     chunk_missing_list.remove(chunk_index)
                     # chunk_index_list.pop(0)
                 else:
                     log.error("chunk", chunk_index, "corrupted")
