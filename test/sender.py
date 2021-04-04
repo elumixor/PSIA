@@ -44,9 +44,9 @@ if __name__ == "__main__":
     # sending header
     while True:
         try:
-            packet = struct.pack("i", chunks_count)
+            packet = struct.pack("i", chunks_count) + md5
             crc = struct.pack("I", zlib.crc32(packet))
-            send_socket.sendto(packet + crc + md5, (remote_ip, remote_port))
+            send_socket.sendto(packet + crc, (remote_ip, remote_port))
             ack, _ = receive_socket.recvfrom(4)
             if ack == struct.pack("i", 1):
                 break

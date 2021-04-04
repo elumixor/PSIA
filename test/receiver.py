@@ -32,9 +32,9 @@ if __name__ == "__main__":
         try:
             data, _ = receive_socket.recvfrom(24)
             chunk_count, = struct.unpack("i", data[:4])
-            chunk_count_crc = data[4:8]
-            md5 = data[8:]
-            if chunk_count_crc == struct.pack("I", zlib.crc32(data[:4])):
+            chunk_count_crc = data[-4:]
+            md5 = data[4:20]
+            if chunk_count_crc == struct.pack("I", zlib.crc32(data[:20])):
                 send_socket.sendto(struct.pack("i", 1), (remote_ip, remote_port))
                 break
             else:
@@ -50,13 +50,12 @@ if __name__ == "__main__":
 
     # receive data
     received_packets = 0
-    while received_packets < chunk_count:
-
-        chunk_index_list = sorted(list(set(chunk_missing_list + chunk_index_list)))
+    while len(chunk_index_list) != 0:
         print("still waiting for", chunk_index_list)
         window = WINDOW_SIZE if len(chunk_index_list) > WINDOW_SIZE else len(chunk_index_list)
-        for _ in range(window):
-            expected_packet_index = chunk_index_list[0]
+        current_window_packets = chunk_index_list[:window]
+        for x in range(window):
+            expected_packet_index = current_window_packets[x]
             try:
                 data, _ = receive_socket.recvfrom(1024)
                 chunk_index, = struct.unpack("i", data[:4])
@@ -75,26 +74,38 @@ if __name__ == "__main__":
                         chunks[chunk_index] = chunk
                         received_packets += 1
                         chunk_index_list.remove(chunk_index)
-                    # chunk_missing_list.append(expected_packet_index)
+                    chunk_missing_list.append(expected_packet_index)
+                    if chunk_index in chunk_missing_list:
+                        chunk_missing_list.remove(chunk_index)
                     # chunk_index_list.pop(0)
                 else:
                     log.error("chunk", chunk_index, "corrupted")
                     chunk_missing_list.append(expected_packet_index)
-                    if expected_packet_index in chunk_index_list:
-                        chunk_index_list.remove(expected_packet_index)
+                    # if expected_packet_index in chunk_index_list:
+                    #     chunk_index_list.remove(expected_packet_index)
             except socket.timeout:
                 log.error("chunk index", expected_packet_index, "timeout")
                 chunk_missing_list.append(expected_packet_index)
-                chunk_index_list.pop(0)
+                #chunk_index_list.pop(0)
 
         # sending request for missing packets
+        for index in current_window_packets:
+            if index in chunk_index_list:
+                chunk_missing_list.append(index)
         chunk_missing_list = list(set(chunk_missing_list))
-        log.info("missing packets list",chunk_missing_list)
+        for index in chunk_missing_list:
+            if index not in chunk_index_list:
+                chunk_missing_list.remove(index)
+        # for index in chunk_missing_list:
+        #     if index not in chunk_index_list:
+        #         chunk_missing_list.remove(index)
+        log.info("missing packets list", chunk_missing_list)
         missing_index_packet = b""
         for missing_index in chunk_missing_list:
             missing_index_packet += struct.pack("i", missing_index)
         missing_index_packet += b"\0" * (WINDOW_SIZE * 4 - len(missing_index_packet))
         send_socket.sendto(missing_index_packet + struct.pack("I", zlib.crc32(missing_index_packet)), (remote_ip, remote_port))
+        #chunk_index_list = sorted(list(set(chunk_missing_list + chunk_index_list)))
         print("-----------")
 
     log.info("writing to file")
@@ -109,4 +120,5 @@ if __name__ == "__main__":
         with open(file_name, "wb") as file:
             file.write(file_bytes)
     else:
+        print(len(chunks))
         log.error("md5 keys do not match")
