@@ -68,7 +68,7 @@ if __name__ == "__main__":
                         chunk_missing_list.remove(chunk_index)
                 elif crc == struct.pack("I", zlib.crc32(data[:-4])):
 
-                    if chunk_index in current_window_packets:
+                    if chunk_index in current_window_packets and chunk_index in chunk_index_list:
                         chunks[chunk_index] = chunk
                         chunk_index_list.remove(chunk_index)
                         log.success("expected", expected_packet_index, "got", chunk_index)

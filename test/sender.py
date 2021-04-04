@@ -7,7 +7,7 @@ import socket
 
 from utils import read_yaml, log
 
-WINDOW_SIZE = 4
+WINDOW_SIZE = 3
 
 INDEX_SIZE = 4
 MAX_PACKET_SIZE = 1024
