@@ -7,6 +7,8 @@ from typing import Callable
 
 from utils import log
 
+WINDOW_SIZE = 4
+
 HEADER_SIZE = 20
 MAX_PACKET_SIZE = 1024
 CRC_SIZE = 4

@@ -3,7 +3,7 @@ import struct
 import sys
 import time
 
-from connection import Connection
+from connection import Connection, WINDOW_SIZE
 from utils import read_yaml, log
 
 if __name__ == '__main__':
@@ -15,6 +15,10 @@ if __name__ == '__main__':
 
     file_name = config["file_name"]["receiver"]
     timeout = config["timeout"]
+
+    chunks = {}
+    initial_window_counter = 0
+    list_of_chunk_indexes = []
 
     with Connection(my_ip, my_port, remote_ip, remote_port, timeout) as connection:
         file_bytes = None
@@ -39,22 +43,29 @@ if __name__ == '__main__':
 
 
         def on_packet(packet: bytes):
-            global should_close, chunk_index, file_bytes
+            global should_close, chunk_index, file_bytes, initial_window_counter
 
             index, packet = packet[:4], packet[4:]
             index, = struct.unpack("i", index)
 
-            if index != chunk_index:
-                return
+            # if index != chunk_index:
+            #     return
 
-            file_bytes += packet
+            chunks[index] = packet
+            print(packet)
+            list_of_chunk_indexes.append(index)
 
-            log(f"Received chunk {chunk_index}")
+            #file_bytes += packet
 
-            if chunk_index == chunks_count - 1:
+            log(f"Received chunk {index}")
+
+            if chunks.len == chunks_count:
                 # Basically, MD5 check is redundant, as we've guaranteed
                 # the correct order of the individual packets and their
                 # integrity
+                for chunk_index in sorted(chunks):
+                    file_bytes += chunks[chunk_index]
+
                 if md5 == hashlib.md5(file_bytes).digest():
                     connection.status = b"md5 ok"
 
@@ -66,9 +77,10 @@ if __name__ == '__main__':
                 else:
                     connection.status = b"md5 error"
                     log.error("MD5 error", file=sys.stderr)
-            else:
+            elif initial_window_counter > 3:
                 connection.status = b"received " + struct.pack("i", chunk_index)
-                chunk_index += 1
+            else:
+                initial_window_counter += 1
 
 
         def on_reset(_):
