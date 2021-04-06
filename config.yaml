@@ -10,6 +10,7 @@ port:
     source: 5100
     target: 5101
 
+window: 5
 timeout: 1
 file_name:
   sender: "../data/original.jpg"

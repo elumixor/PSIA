@@ -1,9 +1,11 @@
 import yaml
 
+from .dot_dict import DotDict, to_dot_dict
+
 
 def read_yaml(path: str):
     with open(path, "r") as stream:
-        return yaml.safe_load(stream)
+        return to_dot_dict(yaml.safe_load(stream))
 
 
 class log:
